@@ -45,10 +45,14 @@ class FR3_ENV:
         # get gripper position
         gripper_position = self.get_robot_gripper_position()
 
+        # get cartisian pose
+        cartisian_pose = self.get_robot_cartisian_pose()
+
         observation["wrist_image"] = wrist_image
         observation["agent_view_image"] = agent_view_image
-        observation["joint_positions"] = joint_positions
+        observation["joint_position"] = joint_positions
         observation["gripper_position"] = gripper_position
+        observation["cartisian_pose"] = cartisian_pose
         return observation
 
 
@@ -57,7 +61,7 @@ class FR3_ENV:
         # joint velocity commands for 7 joints + gripper position command
         duration = franky.Duration(1.0 / self.robot_config.control_frequency * 1000)  # in milliseconds
         success = False
-        if self.robot_config.action_space == "joint_velocity" and self.robot_config.gripper_action_space == "position":
+        if self.robot_config.action_space == "joint_velocity" and self.robot_config.gripper_action_space == "open/close":
             joint_velocity_command = action[:7]
             gripper_position_command = action[7]
 
@@ -73,6 +77,10 @@ class FR3_ENV:
             raise ValueError("Unsupported action space configuration.")
         
         return success
+    
+    def unnormalize_action(self, action):
+        # Assuming action is normalized between -1 and 1
+        pass
 
 
     def get_robot_joint_positions(self):
@@ -81,5 +89,11 @@ class FR3_ENV:
     
     def get_robot_gripper_position(self):
         return self.gripper.width
+    
+    def get_robot_cartisian_pose(self):
+        cartiesian_state = self.robot.current_cartesian_states
+        robot_pose = cartiesian_state.pose
+        ee_pose = robot_pose.end_effector_pose
+        return ee_pose
     
     

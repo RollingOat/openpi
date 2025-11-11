@@ -13,7 +13,7 @@ from openpi_client import image_tools
 from openpi_client import websocket_client_policy
 import pandas as pd
 from PIL import Image
-from droid.robot_env import RobotEnv
+from fr3_env import FR3_ENV, camera_config, robot_config
 import tqdm
 import tyro
 
@@ -71,14 +71,16 @@ def prevent_keyboard_interrupt():
 
 
 def main(args: Args):
-    # Make sure external camera is specified by user -- we only use one external camera for the policy
-    assert (
-        args.external_camera is not None and args.external_camera in ["left", "right"]
-    ), f"Please specify an external camera to use for the policy, choose from ['left', 'right'], but got {args.external_camera}"
-
+    robot_config_instance = robot_config()
+    robot_config_instance.action_space = "joint_velocity"
+    robot_config_instance.gripper_action_space = "position"
+    camera_config_instance = camera_config()
+    camera_config_instance.agent_view_camera_resolution = (640, 480)
+    camera_config_instance.wrist_camera_resolution = (640, 480)
+    camera_config_instance.frame_rate = 30
     # Initialize the Panda environment. Using joint velocity action space and gripper position action space is very important.
-    env = RobotEnv(action_space="joint_velocity", gripper_action_space="position")
-    print("Created the droid env!")
+    env = FR3_ENV(robot_config_instance, camera_config_instance)
+    print("Created the fr3 env!")
 
     # Connect to the policy server
     policy_client = websocket_client_policy.WebsocketClientPolicy(args.remote_host, args.remote_port)

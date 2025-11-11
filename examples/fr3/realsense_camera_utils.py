@@ -29,8 +29,9 @@ def start_realsense_pipeline(rgb_resolution=(640, 480), depth_resolution=(640, 4
             found_rgb = True
             break
     if not found_rgb:
-        print("The demo requires Color sensor")
-        exit(0)
+        print("The demo requires Color sensor but didn't find one.")
+        return None
+        
 
     config.enable_stream(rs.stream.depth, depth_resolution[0], depth_resolution[1], rs.format.z16, frame_rate)
     config.enable_stream(rs.stream.color, rgb_resolution[0], rgb_resolution[1], rs.format.bgr8, frame_rate)

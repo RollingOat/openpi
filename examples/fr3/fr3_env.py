@@ -26,6 +26,7 @@ class FR3_ENV:
         self.max_rot_delta = 0.15
         self.control_hz = 15
         self._max_gripper_width = 0.085  # meters
+        self.reset_joints = np.array([0, -1 / 5 * np.pi, 0, -4 / 5 * np.pi, 0, 3 / 5 * np.pi, 0.0])
 
         # Initialize RealSense camera for wrist camera
         self.wrist_camera_pipeline = start_realsense_pipeline(
@@ -70,6 +71,14 @@ class FR3_ENV:
         self.update_gripper(action_dict["gripper_position"])
 
         return action_dict
+    
+    def reset(self):
+        print("resetting fr3 env...")
+        self.update_gripper(0)
+        print("gripper opened")
+        self.update_joints(self.reset_joints)
+        print("joints reset")
+
 
     def get_robot_joint_positions(self):
         joint_state = self.robot.current_joint_states

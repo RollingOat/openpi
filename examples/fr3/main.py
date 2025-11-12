@@ -20,20 +20,20 @@ import tyro
 faulthandler.enable()
 
 # DROID data collection frequency -- we slow down execution to match this frequency
-DROID_CONTROL_FREQUENCY = 15
+CONTROL_FREQUENCY = 15
 
 
 @dataclasses.dataclass
 class Args:
     # Hardware parameters
-    left_camera_id: str = "<your_camera_id>"  # e.g., "24259877"
-    right_camera_id: str = "<your_camera_id>"  # e.g., "24514023"
-    wrist_camera_id: str = "<your_camera_id>"  # e.g., "13062452"
+    # left_camera_id: str = "<your_camera_id>"  # e.g., "24259877"
+    # right_camera_id: str = "<your_camera_id>"  # e.g., "24514023"
+    # wrist_camera_id: str = "<your_camera_id>"  # e.g., "13062452"
 
     # Policy parameters
-    external_camera: str | None = (
-        None  # which external camera should be fed to the policy, choose from ["left", "right"]
-    )
+    # external_camera: str | None = (
+    #     None  # which external camera should be fed to the policy, choose from ["left", "right"]
+    # )
 
     # Rollout parameters
     max_timesteps: int = 600
@@ -156,47 +156,47 @@ def main(args: Args):
 
                 # Sleep to match DROID data collection frequency
                 elapsed_time = time.time() - start_time
-                if elapsed_time < 1 / DROID_CONTROL_FREQUENCY:
-                    time.sleep(1 / DROID_CONTROL_FREQUENCY - elapsed_time)
+                if elapsed_time < 1 / CONTROL_FREQUENCY:
+                    time.sleep(1 / CONTROL_FREQUENCY - elapsed_time)
             except KeyboardInterrupt:
                 break
 
-        video = np.stack(video)
-        save_filename = "video_" + timestamp
-        ImageSequenceClip(list(video), fps=10).write_videofile(save_filename + ".mp4", codec="libx264")
+        # video = np.stack(video)
+        # save_filename = "video_" + timestamp
+        # ImageSequenceClip(list(video), fps=10).write_videofile(save_filename + ".mp4", codec="libx264")
 
-        success: str | float | None = None
-        while not isinstance(success, float):
-            success = input(
-                "Did the rollout succeed? (enter y for 100%, n for 0%), or a numeric value 0-100 based on the evaluation spec"
-            )
-            if success == "y":
-                success = 1.0
-            elif success == "n":
-                success = 0.0
+        # success: str | float | None = None
+        # while not isinstance(success, float):
+        #     success = input(
+        #         "Did the rollout succeed? (enter y for 100%, n for 0%), or a numeric value 0-100 based on the evaluation spec"
+        #     )
+        #     if success == "y":
+        #         success = 1.0
+        #     elif success == "n":
+        #         success = 0.0
 
-            success = float(success) / 100
-            if not (0 <= success <= 1):
-                print(f"Success must be a number in [0, 100] but got: {success * 100}")
+        #     success = float(success) / 100
+        #     if not (0 <= success <= 1):
+        #         print(f"Success must be a number in [0, 100] but got: {success * 100}")
 
-        df = df.append(
-            {
-                "success": success,
-                "duration": t_step,
-                "video_filename": save_filename,
-            },
-            ignore_index=True,
-        )
+        # df = df.append(
+        #     {
+        #         "success": success,
+        #         "duration": t_step,
+        #         "video_filename": save_filename,
+        #     },
+        #     ignore_index=True,
+        # )
 
         if input("Do one more eval? (enter y or n) ").lower() != "y":
             break
         env.reset()
 
-    os.makedirs("results", exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%I:%M%p_%B_%d_%Y")
-    csv_filename = os.path.join("results", f"eval_{timestamp}.csv")
-    df.to_csv(csv_filename)
-    print(f"Results saved to {csv_filename}")
+    # os.makedirs("results", exist_ok=True)
+    # timestamp = datetime.datetime.now().strftime("%I:%M%p_%B_%d_%Y")
+    # csv_filename = os.path.join("results", f"eval_{timestamp}.csv")
+    # df.to_csv(csv_filename)
+    # print(f"Results saved to {csv_filename}")
 
 
 def _extract_observation(args: Args, obs_dict, *, save_to_disk=False):

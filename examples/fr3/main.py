@@ -141,6 +141,7 @@ def main(args: Args):
                 actions_from_chunk_completed += 1
 
                 # Binarize gripper action
+                # 1 for closed, 0 for open
                 if action[-1].item() > 0.5:
                     # action[-1] = 1.0
                     action = np.concatenate([action[:-1], np.ones((1,))])

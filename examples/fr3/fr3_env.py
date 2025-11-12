@@ -1,5 +1,6 @@
 import franky
 from realsense_camera_utils import start_realsense_pipeline, get_images_from_realsense
+import numpy as np
 
 class robot_config:
     robot_ip: str = ""
@@ -18,6 +19,13 @@ class FR3_ENV:
     def __init__(self, robot_config, camera_config):
         self.robot_config = robot_config
         self.camera_config = camera_config
+        self.relative_max_joint_delta = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2])
+        self.max_joint_delta = self.relative_max_joint_delta.max()
+        self.max_gripper_delta = 0.25
+        self.max_lin_delta = 0.075
+        self.max_rot_delta = 0.15
+        self.control_hz = 15
+        self._max_gripper_width = 0.085  # meters
 
         # Initialize RealSense camera for wrist camera
         self.wrist_camera_pipeline = start_realsense_pipeline(
@@ -28,7 +36,7 @@ class FR3_ENV:
 
         # connect to robot arm
         self.robot = franky.Robot(self.robot_config.robot_ip)
-        self.robot.relative_dynamic_factor = self.robot_config.relative_dynamic_factor
+        # self.robot.relative_dynamic_factor = self.robot_config.relative_dynamic_factor
         self.gripper = franky.Gripper(self.robot_config.robot_ip)
 
     def get_observation(self):
@@ -54,34 +62,14 @@ class FR3_ENV:
         observation["gripper_position"] = gripper_position
         observation["cartisian_pose"] = cartisian_pose
         return observation
-
-
-    def step(self, action):
-        # action is a (8,) np.ndarray
-        # joint velocity commands for 7 joints + gripper position command
-        duration = franky.Duration(1.0 / self.robot_config.control_frequency * 1000)  # in milliseconds
-        success = False
-        if self.robot_config.action_space == "joint_velocity" and self.robot_config.gripper_action_space == "open/close":
-            joint_velocity_command = action[:7]
-            gripper_position_command = action[7]
-
-            jv = franky.JointVelocityMotion(joint_velocity_command.tolist(), duration=duration)
-            self.robot.move(jv, asynchronous=True)
-            gripper_success = self.gripper.move_async(gripper_position_command, self.speed)
-            success = gripper_success
-
-        elif self.robot_config.action_space == "end_effector_pose" and self.robot_config.gripper_action_space == "open/close":
-            raise NotImplementedError("End effector pose control not implemented yet.")
-        
-        else:
-            raise ValueError("Unsupported action space configuration.")
-        
-        return success
     
-    def unnormalize_action(self, action):
-        # Assuming action is normalized between -1 and 1
-        pass
+    def step(self, action):
+        action_dict = self.create_action_dict(action)
+        
+        self.update_joints(action_dict["joint_position"])
+        self.update_gripper(action_dict["gripper_position"])
 
+        return action_dict
 
     def get_robot_joint_positions(self):
         joint_state = self.robot.current_joint_states
@@ -96,4 +84,85 @@ class FR3_ENV:
         ee_pose = robot_pose.end_effector_pose
         return ee_pose
     
+    def create_action_dict(self, action):
+        ## assuming action space is joint velocity + gripper position
+        action_dict = {}
+        action_dict["gripper_position"] = float(np.clip(action[-1], 0, 1))
+        action_dict["joint_velocity"] = action[:-1]
+        joint_delta = self.joint_velocity_to_delta(action[:-1])
+        action_dict["joint_position"] = (joint_delta + self.get_robot_joint_positions()).tolist()
+        return action_dict
     
+
+    def update_joints(self, joint_position):
+        jpm = franky.JointMotion(joint_position)
+        self.robot.move(jpm, asynchronous=True)
+
+    def update_gripper(self, gripper_position):
+        command = float(np.clip(gripper_position, 0, 1))
+        width = self._max_gripper_width * (1 - command)
+        self.gripper.move_async(width, speed=0.05, force = 0.1)
+
+    ### Velocity To Delta ###
+    def gripper_velocity_to_delta(self, gripper_velocity):
+        gripper_vel_norm = np.linalg.norm(gripper_velocity)
+
+        if gripper_vel_norm > 1:
+            gripper_velocity = gripper_velocity / gripper_vel_norm
+
+        gripper_delta = gripper_velocity * self.max_gripper_delta
+
+        return gripper_delta
+
+    def cartesian_velocity_to_delta(self, cartesian_velocity):
+        if isinstance(cartesian_velocity, list):
+            cartesian_velocity = np.array(cartesian_velocity)
+
+        lin_vel, rot_vel = cartesian_velocity[:3], cartesian_velocity[3:6]
+
+        lin_vel_norm = np.linalg.norm(lin_vel)
+        rot_vel_norm = np.linalg.norm(rot_vel)
+
+        if lin_vel_norm > 1:
+            lin_vel = lin_vel / lin_vel_norm
+        if rot_vel_norm > 1:
+            rot_vel = rot_vel / rot_vel_norm
+
+        lin_delta = lin_vel * self.max_lin_delta
+        rot_delta = rot_vel * self.max_rot_delta
+
+        return np.concatenate([lin_delta, rot_delta])
+
+    def joint_velocity_to_delta(self, joint_velocity):
+        if isinstance(joint_velocity, list):
+            joint_velocity = np.array(joint_velocity)
+
+        relative_max_joint_vel = self.joint_delta_to_velocity(self.relative_max_joint_delta)
+        max_joint_vel_norm = (np.abs(joint_velocity) / relative_max_joint_vel).max()
+
+        if max_joint_vel_norm > 1:
+            joint_velocity = joint_velocity / max_joint_vel_norm
+
+        joint_delta = joint_velocity * self.max_joint_delta
+
+        return joint_delta
+
+    ### Delta To Velocity ###
+    def gripper_delta_to_velocity(self, gripper_delta):
+        return gripper_delta / self.max_gripper_delta
+
+    def cartesian_delta_to_velocity(self, cartesian_delta):
+        if isinstance(cartesian_delta, list):
+            cartesian_delta = np.array(cartesian_delta)
+
+        cartesian_velocity = np.zeros_like(cartesian_delta)
+        cartesian_velocity[:3] = cartesian_delta[:3] / self.max_lin_delta
+        cartesian_velocity[3:6] = cartesian_delta[3:6] / self.max_rot_delta
+
+        return cartesian_velocity
+
+    def joint_delta_to_velocity(self, joint_delta):
+        if isinstance(joint_delta, list):
+            joint_delta = np.array(joint_delta)
+
+        return joint_delta / self.max_joint_delta

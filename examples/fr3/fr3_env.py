@@ -1,10 +1,11 @@
 import franky
 from realsense_camera_utils import start_realsense_pipeline, get_images_from_realsense
+from web_camera_utils import get_images_from_web_camera, start_web_camera
 import numpy as np
 
 class robot_config:
     robot_ip: str = ""
-    relative_dynamic_factor: float = 0.05
+    relative_dynamics_factor: float = 0.8
     action_space: str = "joint_velocity" # options: "joint_velocity", "end_effector_pose"
     gripper_action_space: str = "position" # options: "position", "open/close"
     control_frequency: int = 15
@@ -14,6 +15,11 @@ class camera_config:
     agent_view_camera_resolution: tuple = (640, 480)
     wrist_camera_resolution: tuple = (640, 480)
     frame_rate: int = 30
+    use_agent_view_camera: bool = True
+    use_wrist_camera: bool = True
+    wrist_camera_type: str = "realsense"  # options: "realsense", "web_camera", "oak_d_camera"
+    agent_view_camera_type: str = "realsense"  # options: "realsense", "web_camera", "oak_d_camera"
+    web_camera_index: int = 2  # default camera index for web camera
 
 class FR3_ENV:
     def __init__(self, robot_config, camera_config):
@@ -25,28 +31,79 @@ class FR3_ENV:
         self.max_lin_delta = 0.075
         self.max_rot_delta = 0.15
         self.control_hz = 15
-        self._max_gripper_width = 0.085  # meters
-        self.reset_joints = np.array([0, -1 / 5 * np.pi, 0, -4 / 5 * np.pi, 0, 3 / 5 * np.pi, 0.0])
+        self._max_gripper_width = 0.079  # meters
+        self.reset_joints = np.array([0, -1 / 5 * np.pi, 0, -4 / 5 * np.pi, 0, 3 / 5 * np.pi, 1 / 4 * 3.1415])
+        self.use_async_motion = True
 
-        # Initialize RealSense camera for wrist camera
-        self.wrist_camera_pipeline = start_realsense_pipeline(
-            rgb_resolution=self.camera_config.wrist_camera_resolution,
-            depth_resolution=self.camera_config.wrist_camera_resolution,
-            frame_rate=self.camera_config.frame_rate
-        )
+        if self.camera_config.use_agent_view_camera:
+            # Initialize RealSense camera for agent view camera
+            if self.camera_config.agent_view_camera_type == "realsense":
+                self.agent_view_camera_pipeline = start_realsense_pipeline(
+                    rgb_resolution=self.camera_config.agent_view_camera_resolution,
+                    depth_resolution=self.camera_config.agent_view_camera_resolution,
+                    frame_rate=self.camera_config.frame_rate
+                )
+            elif self.camera_config.agent_view_camera_type == "web_camera":
+                self.agent_view_camera_pipeline = start_web_camera(self.camera_config.web_camera_index)
+            else:
+                raise ValueError(f"Unsupported agent view camera type: {self.camera_config.agent_view_camera_type}")
+        
+        if self.camera_config.use_wrist_camera:
+            # Initialize RealSense camera for wrist camera
+            if self.camera_config.wrist_camera_type == "realsense":
+                self.wrist_camera_pipeline = start_realsense_pipeline(
+                    rgb_resolution=self.camera_config.wrist_camera_resolution,
+                    depth_resolution=self.camera_config.wrist_camera_resolution,
+                    frame_rate=self.camera_config.frame_rate
+                )
+            elif self.camera_config.wrist_camera_type == "web_camera":
+                self.wrist_camera_pipeline = start_web_camera(self.camera_config.web_camera_index)
+            else:
+                raise ValueError(f"Unsupported wrist camera type: {self.camera_config.wrist_camera_type}")
+            
 
         # connect to robot arm
         self.robot = franky.Robot(self.robot_config.robot_ip)
-        # self.robot.relative_dynamic_factor = self.robot_config.relative_dynamic_factor
+        self.robot.relative_dynamics_factor = self.robot_config.relative_dynamics_factor
         self.gripper = franky.Gripper(self.robot_config.robot_ip)
+        # homing the gripper
+        # print("Homing the gripper...")
+        # self.gripper.homing()
+        # print("Gripper homed.")
+
+    def get_images(self):
+        images = {}
+        
+        # get wrist camera images
+        if self.camera_config.use_wrist_camera:
+            wrist_image, _ = get_images_from_realsense(self.wrist_camera_pipeline)
+        else:
+            wrist_image = None
+
+        # get agent view camera images
+        if self.camera_config.use_agent_view_camera:
+            agent_view_image, _ = get_images_from_realsense(self.agent_view_camera_pipeline)
+        else:
+            agent_view_image = None
+
+        images["wrist_image"] = wrist_image
+        images["agent_view_image"] = agent_view_image
+        return images
 
     def get_observation(self):
         observation = {}
         
         # get wrist camera images
-        wrist_image, _ = get_images_from_realsense(self.wrist_camera_pipeline)
+        if self.camera_config.use_wrist_camera:
+            wrist_image, _ = get_images_from_realsense(self.wrist_camera_pipeline)
+        else:
+            wrist_image = None
+
         # get agent view camera images
-        agent_view_image, _ = get_images_from_realsense(self.agent_view_camera_pipeline)
+        if self.camera_config.use_agent_view_camera:
+            agent_view_image, _ = get_images_from_realsense(self.agent_view_camera_pipeline)
+        else:
+            agent_view_image = None
 
         # get joint positions
         joint_positions = self.get_robot_joint_positions()
@@ -66,7 +123,8 @@ class FR3_ENV:
     
     def step(self, action):
         action_dict = self.create_action_dict(action)
-        
+        print("Planned goal joint positions:", action_dict["joint_position"])
+        print("Planned gripper position:", action_dict["gripper_position"])
         self.update_joints(action_dict["joint_position"])
         self.update_gripper(action_dict["gripper_position"])
 
@@ -81,14 +139,14 @@ class FR3_ENV:
 
 
     def get_robot_joint_positions(self):
-        joint_state = self.robot.current_joint_states
+        joint_state = self.robot.current_joint_state
         return joint_state.position
     
     def get_robot_gripper_position(self):
         return self.gripper.width
     
     def get_robot_cartisian_pose(self):
-        cartiesian_state = self.robot.current_cartesian_states
+        cartiesian_state = self.robot.current_cartesian_state
         robot_pose = cartiesian_state.pose
         ee_pose = robot_pose.end_effector_pose
         return ee_pose
@@ -98,19 +156,42 @@ class FR3_ENV:
         action_dict = {}
         action_dict["gripper_position"] = float(np.clip(action[-1], 0, 1))
         action_dict["joint_velocity"] = action[:-1]
+        print("joint velocity is:", action_dict["joint_velocity"])
         joint_delta = self.joint_velocity_to_delta(action[:-1])
-        action_dict["joint_position"] = (joint_delta + self.get_robot_joint_positions()).tolist()
+        print("joint delta is:", joint_delta)
+        action_dict["joint_position"] = joint_delta + self.get_robot_joint_positions()
+        print("goal joint position is:", action_dict["joint_position"])
         return action_dict
     
 
     def update_joints(self, joint_position):
+        # If the robot entered a safety reflex (e.g. collision), the
+        # Franka lib will reject move commands while in RobotMode.Reflex.
+        # Try to recover before sending the motion command.
+        try:
+            robot_mode = self.robot.state.robot_mode
+        except Exception:
+            robot_mode = None
+
+        if robot_mode == franky.RobotMode.Reflex:
+            # recover_from_errors() returns a bool indicating success
+            recovered = self.robot.recover_from_errors()
+            if not recovered:
+                raise RuntimeError("Robot is in Reflex mode and recover_from_errors() failed.")
+
         jpm = franky.JointMotion(joint_position)
-        self.robot.move(jpm, asynchronous=True)
+        if self.use_async_motion:
+            self.robot.move(jpm, asynchronous=True)
+        else:
+            self.robot.move(jpm)
 
     def update_gripper(self, gripper_position):
         command = float(np.clip(gripper_position, 0, 1))
         width = self._max_gripper_width * (1 - command)
-        self.gripper.move_async(width, speed=0.05, force = 0.1)
+        if not self.use_async_motion:
+            self.gripper.move(width, speed=0.05)
+        else:
+            self.gripper.move_async(width, speed=0.05)
 
     ### Velocity To Delta ###
     def gripper_velocity_to_delta(self, gripper_velocity):

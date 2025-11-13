@@ -1,21 +1,49 @@
 from fr3_env import FR3_ENV, camera_config, robot_config
 import numpy as np
 import cv2
+import time
 
 if __name__ == "__main__":
-    env = FR3_ENV(robot_config(), camera_config())
+    try:
+        config_robot = robot_config()
+        config_robot.robot_ip = "192.168.1.12"
+        config_camera = camera_config()
+        use_wrist_camera = True
+        use_agent_view_camera = False
+        config_camera.use_wrist_camera = use_wrist_camera
+        config_camera.use_agent_view_camera = use_agent_view_camera
+        env = FR3_ENV(config_robot, config_camera)
 
-    # test get camera image
-    observation = env.get_observation()
-    wrist_image = observation["wrist_image"]
-    agent_view_image = observation["agent_view_image"]
+        while True:
+            start_time = time.time()
+            # test get camera image
+            observation = env.get_observation()
+            wrist_image = observation["wrist_image"]
+            agent_view_image = observation["agent_view_image"]
+            if wrist_image is not None:
+                print("Wrist Image Shape:", wrist_image.shape)
+            if agent_view_image is not None:
+                print("Agent View Image Shape:", agent_view_image.shape)
 
-    print("Wrist Image Shape:", wrist_image.shape)
-    print("Agent View Image Shape:", agent_view_image.shape)
+            # visualize the images using OpenCV
+            if wrist_image is not None:
+                cv2.namedWindow('Wrist Camera', cv2.WINDOW_AUTOSIZE)
+                cv2.imshow("Wrist Camera", wrist_image)
+            if agent_view_image is not None:
+                cv2.namedWindow('Agent View Camera', cv2.WINDOW_AUTOSIZE)
+                cv2.imshow("Agent View Camera", agent_view_image)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                cv2.destroyAllWindows()
+                break
+                
+            end_time = time.time()
 
-    # visualize the images using OpenCV
-    
-    cv2.imshow("Wrist Camera", wrist_image)
-    cv2.imshow("Agent View Camera", agent_view_image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+            if end_time - start_time < 1/30.0:
+                time.sleep(1/30.0 - (end_time - start_time))
+
+    finally:
+        # Stop streaming
+        if use_agent_view_camera:
+            env.agent_view_camera_pipeline.stop()
+        if use_wrist_camera:
+            env.wrist_camera_pipeline.stop()

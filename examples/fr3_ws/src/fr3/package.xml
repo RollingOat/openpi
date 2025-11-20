@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>fr3</name>
+  <version>0.0.0</version>
+  <description>FR3 ROS service and tools for openpi examples</description>
+
+  <maintainer email="you@example.com">You</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- build tool -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- for generating and using srv -->
+  <build_depend>rosidl_default_generators</build_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <!-- messages used in the .srv -->
+  <build_depend>sensor_msgs</build_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+
+  <!-- runtime for Python nodes -->
+  <exec_depend>rclpy</exec_depend>
+  
+  <!-- Required when a package installs ROS interface files (msg/srv/action) -->
+  <member_of_group>rosidl_interface_packages</member_of_group>
+</package>

@@ -25,7 +25,12 @@ class camera_config:
     web_camera_index: int = 2  # default camera index for web camera
 
 class FR3_ENV:
-    def __init__(self, robot_config, camera_config):
+    def __init__(self, robot_config, camera_config, dummy_mode=False):
+        self.dummy_mode = dummy_mode
+        if self.dummy_mode:
+            print("Initializing FR3_ENV in dummy mode...")
+            # quit early for dummy mode
+            return
         self.robot_config = robot_config
         self.camera_config = camera_config
         self.relative_max_joint_delta = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2])
@@ -79,6 +84,7 @@ class FR3_ENV:
         # print("Gripper homed.")
 
     def get_images(self):
+        
         images = {}
         
         # # get wrist camera images
@@ -101,6 +107,19 @@ class FR3_ENV:
         return images
 
     def get_observation(self):
+        if self.dummy_mode:
+            print("FR3_ENV in dummy mode: returning dummy observation.")
+            dummy_image = np.zeros((480, 640, 3), dtype=np.uint8)
+            return {
+                "wrist_image": dummy_image,
+                "agent_view_image": dummy_image,
+                "joint_position": [0.0, -0.1, 0.2, 0.0, -0.3, 0.1, 0.0],
+                "gripper_position": 0.05,
+                "cartisian_pose": [0.5, 0.0, 0.3, 0.0, 0.0, 0.0],
+            }
+
+
+
         observation = {}
         
         # # get wrist camera images
@@ -134,6 +153,9 @@ class FR3_ENV:
         return observation
     
     def step(self, action):
+        if self.dummy_mode:
+            print("FR3_ENV in dummy mode: step skipped.")
+            return {}
         action_dict = self.create_action_dict(action)
         print("Planned goal joint positions:", action_dict["joint_position"])
         print("Planned gripper position:", action_dict["gripper_position"])
@@ -143,6 +165,9 @@ class FR3_ENV:
         return action_dict
     
     def reset(self):
+        if self.dummy_mode:
+            print("FR3_ENV in dummy mode: reset skipped.")
+            return
         print("resetting fr3 env...")
         self.update_gripper(0)
         print("gripper opened")

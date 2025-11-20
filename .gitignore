@@ -169,3 +169,7 @@ cython_debug/
 
 third_party/
 .vscode/
+examples/fr3_ws/build/
+examples/fr3_ws/devel/
+examples/fr3_ws/install/
+examples/fr3_ws/log/

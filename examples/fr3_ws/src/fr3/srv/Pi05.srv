@@ -1,0 +1,18 @@
+# Request
+sensor_msgs/Image wrist_image
+sensor_msgs/Image agent_view_image
+string prompt
+float64[] joint_position # 8
+float64 gripper_position # 1
+
+---
+
+# Response
+# Recommended fields:
+# - action_joint_position: returned target joint positions (float64[])
+# - action_gripper_position: returned gripper position(s) (float64[])
+# - action_json: optional flexible JSON-encoded action metadata
+# - success: whether inference succeeded
+# - error: optional error message when success=false
+float64[] action_chunk
+bool success
